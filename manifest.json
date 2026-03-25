@@ -1,15 +1,11 @@
 {
   "name": "ChatGemi AI",
   "short_name": "ChatGemi",
-  "start_url": "index.html",
+  "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#343541",
+  "background_color": "#000000",
   "theme_color": "#10a37f",
   "icons": [
-    {
-      "src": "ChatGemi.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
+    { "src": "ChatGemi2.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
