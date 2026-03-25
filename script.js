@@ -1,143 +1,167 @@
-// --- CONFIGURATION ---
-const API_KEY = "AIzaSyC8erXmQ_XaSuiq_sNWAsK50mPYVXrUemk"; // ⚠️ Vérifie qu'elle ne commence pas par "Alza" mais par "AIza"
-const MODEL = "gemini-1.5-flash";
-const API_URL = `https://generativelanguage.googleapis.com/v1/models/${MODEL}:generateContent?key=${API_KEY}`;
+// --- CONFIGURATION & BASE DE DONNÉES ---
+const KNOWLEDGE = [
+    {
+        keys: ["math", "calcul", "addition", "multiplication", "equation", "pythagore", "thales"],
+        short: "Je suis expert en Mathématiques ! Je peux t'aider pour le primaire, le secondaire et l'université.",
+        detailed: "### Expert Mathématiques\n- **Primaire**: Arithmétique de base (+, -, *, /).\n- **Secondaire**: Algèbre, Géométrie (Théorèmes de Pythagore et Thalès), Équations du 2nd degré.\n- **Université**: Calcul différentiel, Intégrales, Algèbre linéaire et Statistiques."
+    },
+    {
+        keys: ["compta", "bilan", "gestion", "debit", "credit", "journal"],
+        short: "La comptabilité est ma spécialité. Parlons de bilan ou de gestion financière !",
+        detailed: "### Expert Comptabilité\n- **Secondaire**: Le Journal, le Grand Livre et l'équilibre de la Balance.\n- **Université**: Normes IFRS/SYSCOHADA, Analyse des flux de trésorerie (Cash-flow), et Consolidation des comptes."
+    },
+    {
+        keys: ["code", "genie logiciel", "python", "javascript", "programmation"],
+        short: "Je maîtrise le Génie Logiciel et le développement d'applications.",
+        detailed: "### Expert Génie Logiciel\n- **Algorithmie**: Structures de données et logique.\n- **Développement**: Création d'appli Web (HTML/CSS/JS) et Backend (Python, Node.js).\n- **Architecture**: Micro-services, Design Patterns et méthodes Agiles."
+    }
+];
+
+const SMALL_TALK = [
+    { keys: ["bonjour", "salut", "hello", "coucou", "yo"], res: ["Bonjour Chef ! Comment puis-je t'aider ?", "Salut l'ami ! Content de te voir.", "Bonjour ! Prêt pour une nouvelle discussion ?"] },
+    { keys: ["ca va", "tu vas bien", "cv"], res: ["Je vais super bien, et toi ?", "Toujours prêt à répondre, je me sens en forme ! Et toi ?"] },
+    { keys: ["chef", "bro", "ami", "pote"], res: ["C'est moi ! On est ensemble l'ami.", "Présent ! Qu'est-ce qu'on fait aujourd'hui ?"] }
+];
+
+// --- LOGIQUE DE CHAT ---
+let chats = JSON.parse(localStorage.getItem('chatgemi_v2')) || {};
+let currentChatId = Date.now();
 
 const chatBox = document.getElementById('chat-box');
 const userInput = document.getElementById('user-input');
-const historyList = document.getElementById('history-list');
 
-let currentChatId = Date.now();
-let chats = JSON.parse(localStorage.getItem('chatGemi_v2')) || {};
+function clean(t) { return t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim(); }
 
-const SYSTEM_PROMPT = "Tu es ChatGemi, un expert multi-disciplinaire. Tu maîtrises les mathématiques (du primaire à l'université), la comptabilité (SYSCOHADA/IFRS), le génie logiciel, et la littérature (poésie, citations). Réponds de manière précise et éducative.";
+async function getAIResponse(text) {
+    const input = clean(text);
+    const isDetail = input.includes("explique") || input.includes("pourquoi") || input.includes("comment") || input.includes("detail");
 
-// --- FONCTIONS DE CHAT ---
+    // 1. Social / Amitié
+    for (let t of SMALL_TALK) {
+        if (t.keys.some(k => input.includes(k)) && !isDetail) {
+            return t.res[Math.floor(Math.random() * t.res.length)];
+        }
+    }
 
-async function sendMessage() {
+    // 2. Expertise Locale
+    for (let k of KNOWLEDGE) {
+        if (k.keys.some(key => input.includes(key))) {
+            return isDetail ? k.detailed : k.short;
+        }
+    }
+
+    // 3. Recherche Web (Wikipedia)
+    return await fetchWiki(text, isDetail);
+}
+
+async function fetchWiki(query, detailed) {
+    try {
+        const resSearch = await fetch(`https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`);
+        const dataSearch = await resSearch.json();
+        if (dataSearch.query.search.length > 0) {
+            const title = dataSearch.query.search[0].title;
+            const url = detailed 
+                ? `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`
+                : `https://fr.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+            
+            const resData = await fetch(url);
+            const finalData = await resData.json();
+            
+            if (detailed) {
+                const pages = finalData.query.pages;
+                return pages[Object.keys(pages)[0]].extract.substring(0, 1200) + "... *(Source: Wikipédia)*";
+            }
+            return finalData.extract + " *(Source: Wikipédia)*";
+        }
+    } catch (e) { return "Je n'ai pas trouvé d'info précise, mais pose-moi une autre question Chef !"; }
+    return "Je ne suis pas sûr de comprendre, mais je peux t'aider en Maths, Compta ou Code !";
+}
+
+// --- INTERFACE & GESTION ---
+
+async function handleSend() {
     const text = userInput.value.trim();
     if (!text) return;
 
-    // Créer la discussion si elle n'existe pas
-    if (!chats[currentChatId]) {
-        chats[currentChatId] = { title: text.substring(0, 25), messages: [] };
-    }
+    if (!chats[currentChatId]) chats[currentChatId] = { title: text.substring(0, 25), messages: [] };
 
-    appendMessage(text, 'user');
+    appendMsg(text, 'user');
     userInput.value = "";
 
-    // Préparation des messages pour l'API Gemini
-    // On inclut le système prompt dans le premier message pour donner le rôle d'expert
-    let messagesToAPI = [];
-    if (chats[currentChatId].messages.length <= 1) {
-        messagesToAPI.push({ role: "user", parts: [{ text: SYSTEM_PROMPT + "\n\nQuestion : " + text }] });
-    } else {
-        messagesToAPI = chats[currentChatId].messages.map(m => ({
-            role: m.role === "user" ? "user" : "model",
-            parts: [{ text: m.text }]
-        }));
-    }
+    const loading = document.createElement('div');
+    loading.className = "message ai";
+    loading.innerHTML = "🔍 Réflexion...";
+    chatBox.appendChild(loading);
 
-    try {
-        const response = await fetch(API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contents: messagesToAPI })
-        });
-
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error(data.error.message);
-        }
-
-        const aiResponse = data.candidates[0].content.parts[0].text;
-        appendMessage(aiResponse, 'ai');
-        saveToLocal();
-        renderHistory();
-    } catch (error) {
-        console.error("Erreur détaillée:", error);
-        appendMessage("Désolé, j'ai une erreur : " + error.message, 'ai');
-    }
+    const response = await getAIResponse(text);
+    chatBox.removeChild(loading);
+    appendMsg(response, 'ai');
+    save();
 }
 
-function appendMessage(text, role) {
+function appendMsg(text, role) {
     const div = document.createElement('div');
     div.className = `message ${role}`;
-    // Support du Markdown pour les formules maths et code
     div.innerHTML = typeof marked !== 'undefined' ? marked.parse(text) : text;
     chatBox.appendChild(div);
     chatBox.scrollTop = chatBox.scrollHeight;
-    
     chats[currentChatId].messages.push({ role, text });
 }
 
-// --- HISTORIQUE & NOUVELLE DISCUSSION ---
-
-function saveToLocal() {
-    localStorage.setItem('chatGemi_v2', JSON.stringify(chats));
+function save() {
+    localStorage.setItem('chatgemi_v2', JSON.stringify(chats));
+    renderHistory();
 }
 
 function renderHistory() {
-    historyList.innerHTML = "";
+    const list = document.getElementById('history-list');
+    list.innerHTML = "";
     Object.keys(chats).reverse().forEach(id => {
-        const div = document.createElement('div');
-        div.className = "history-item";
-        div.innerHTML = `<i class="far fa-message"></i> ${chats[id].title}`;
-        div.onclick = () => loadChat(id);
-        historyList.appendChild(div);
+        const d = document.createElement('div');
+        d.className = "history-item";
+        d.innerHTML = `<i class="far fa-comment"></i> ${chats[id].title}`;
+        d.onclick = () => {
+            currentChatId = id;
+            chatBox.innerHTML = "";
+            chats[id].messages.forEach(m => {
+                const div = document.createElement('div');
+                div.className = `message ${m.role}`;
+                div.innerHTML = marked.parse(m.text);
+                chatBox.appendChild(div);
+            });
+            document.getElementById('sidebar').classList.remove('open');
+        };
+        list.appendChild(d);
     });
 }
 
-function loadChat(id) {
-    currentChatId = id;
-    chatBox.innerHTML = "";
-    chats[id].messages.forEach(msg => {
-        const div = document.createElement('div');
-        div.className = `message ${msg.role}`;
-        div.innerHTML = typeof marked !== 'undefined' ? marked.parse(msg.text) : msg.text;
-        chatBox.appendChild(div);
-    });
-    if (window.innerWidth < 768) document.getElementById('sidebar').classList.remove('open');
-}
+// --- ÉVÉNEMENTS ---
 
-function startNewChat() {
-    currentChatId = Date.now();
-    chatBox.innerHTML = `<div class="message ai">Nouvelle discussion prête. Je vous écoute (Maths, Compta, Poésie...)</div>`;
-    if (window.innerWidth < 768) document.getElementById('sidebar').classList.remove('open');
-}
+// Splash Screen
+window.addEventListener('load', () => {
+    setTimeout(() => { document.getElementById('splash-screen').classList.add('hidden'); }, 3000);
+});
 
-// --- VOCAL ---
+// Menu Hamburger & Clic Extérieur
+const sidebar = document.getElementById('sidebar');
+const menuToggle = document.getElementById('menu-toggle');
 
-function setupVoice() {
-    const voiceBtn = document.getElementById('voice-btn');
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+menuToggle.onclick = (e) => { e.stopPropagation(); sidebar.classList.toggle('open'); };
 
-    if (!SpeechRecognition) {
-        voiceBtn.style.display = "none";
-        return;
+document.addEventListener('click', (e) => {
+    if (sidebar.classList.contains('open') && !sidebar.contains(e.target) && !menuToggle.contains(e.target)) {
+        sidebar.classList.remove('open');
     }
+});
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'fr-FR';
+// Nouveau Chat
+document.getElementById('new-chat-btn').onclick = () => {
+    currentChatId = Date.now();
+    chatBox.innerHTML = "<div class='message ai'>Bonjour Chef ! Que faisons-nous aujourd'hui ?</div>";
+    sidebar.classList.remove('open');
+};
 
-    voiceBtn.onclick = () => {
-        recognition.start();
-        voiceBtn.style.color = "red";
-    };
-
-    recognition.onresult = (event) => {
-        userInput.value = event.results[0][0].transcript;
-        voiceBtn.style.color = "#acacbe";
-        sendMessage();
-    };
-}
-
-// --- INIT ---
-document.getElementById('send-btn').onclick = sendMessage;
-document.getElementById('new-chat-btn').onclick = startNewChat;
-document.getElementById('menu-toggle').onclick = () => document.getElementById('sidebar').classList.toggle('open');
-userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+document.getElementById('send-btn').onclick = handleSend;
+userInput.onkeypress = (e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } };
 
 renderHistory();
-setupVoice();

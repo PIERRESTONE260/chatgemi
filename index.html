@@ -3,42 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ChatGemi Pro</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="shortcut icon" href="ChatGemi2.png" type="image/x-icon">
-    <link rel="manifest" href="manifest.json">
-    <!-- Pour le rendu mathématique et markdown -->
+    <title>ChatGemi - Assistant</title>
+    <!-- Bibliothèques Externes -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="shortcut icon" href="ChatGemi2.png" type="image/x-icon">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+    <!-- Écran de démarrage (Splash Screen) -->
+    <div id="splash-screen">
+        <div class="logo-container">
+            <img src="ChatGemi2.png" alt="ChatGemi" class="fade-in-logo">
+            <div class="loader-line"></div>
+        </div>
+    </div>
+
     <div class="app-container">
-        <!-- Barre Latérale (Historique) -->
+        <!-- Barre Latérale (Historique / Stories) -->
         <aside id="sidebar">
-            <button id="new-chat-btn"><i class="fas fa-plus"></i> Nouvelle discussion</button>
+            <button id="new-chat-btn"><i class="fas fa-plus"></i> Nouveau Chat</button>
+            <div class="history-label">Anciennes Discussions</div>
             <div id="history-list">
-                <!-- Les anciens chats s'afficheront ici -->
+                <!-- Les discussions s'affichent ici -->
             </div>
         </aside>
 
-        <!-- Zone de Chat Principale -->
+        <!-- Zone Principale -->
         <main class="main-content">
             <header>
                 <button id="menu-toggle"><i class="fas fa-bars"></i></button>
-                <h1>ChatGemi <small>Expert</small></h1>
+                <h1>ChatGemi</h1>
             </header>
 
-            <div id="chat-box"></div>
+            <div id="chat-box">
+                <!-- Les messages s'affichent ici -->
+            </div>
 
             <footer>
                 <div class="input-area">
                     <button id="voice-btn"><i class="fas fa-microphone"></i></button>
-                    <textarea id="user-input" placeholder="Posez une question (Maths, Compta, Poésie...)" rows="1"></textarea>
+                    <textarea id="user-input" placeholder="Parle-moi Chef..." rows="1"></textarea>
                     <button id="send-btn"><i class="fas fa-paper-plane"></i></button>
                 </div>
             </footer>
         </main>
     </div>
+
     <script src="script.js"></script>
 </body>
 </html>
